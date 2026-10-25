@@ -1,0 +1,69 @@
+name: $(Build.DefinitionName)_$(Date:yyyyMMdd)$(Rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - docs/*
+      - README.md
+
+pr:
+  branches:
+    include:
+      - main
+
+schedules:
+  - cron: "0 2 * * *"
+    displayName: "Nightly Automated Drift Detection Pipeline"
+    branches:
+      include:
+        - main
+    always: true
+
+variables:
+  - name: terraformVersion
+    value: '1.8.0'
+  - name: azureServiceConnection
+    value: 'sc-enterprise-azure-sub'
+  - name: backendResourceGroup
+    value: 'rg-terraform-state'
+  - name: backendStorageAccount
+    value: 'sttfstateenterprise'
+  - name: backendContainer
+    value: 'tfstate'
+  - name: backendKey
+    value: 'devsecops-shield/prod.tfstate'
+
+stages:
+  # Stage 1: Validation
+  - stage: Validate
+    displayName: "Stage 1: Validation & Quality"
+    jobs:
+      - template: templates/validate-stage.yml
+
+  # Stage 2: Shift-Left Security
+  - stage: SecurityScan
+    displayName: "Stage 2: Shift-Left Security"
+    dependsOn: Validate
+    jobs:
+      - template: templates/security-stage.yml
+
+  # Stage 3: FinOps Budgeting
+  - stage: FinOps
+    displayName: "Stage 3: FinOps Budget Gate"
+    dependsOn: SecurityScan
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+    jobs:
+      - template: templates/finops-stage.yml
+
+  # Stage 4: Production Apply Gate
+  - stage: DeployProduction
+    displayName: "Stage 4: Production Apply & Auto-Rollback"
+    dependsOn: SecurityScan
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - template: templates/deploy-stage.yml
+        parameters:
+          environment: 'production'

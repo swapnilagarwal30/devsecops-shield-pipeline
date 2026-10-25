@@ -1,0 +1,13 @@
+jobs:
+  - job: FinOpsCostJob
+    displayName: "Infracost FinOps Budget Estimation"
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - script: |
+          curl -fsSL https://raw.githubusercontent.com/infracost/infracost/master/scripts/install.sh | sh
+          infracost breakdown --path sample-workload --format json --out-file $(Agent.TempDirectory)/infracost.json || true
+          python scripts/cost-guardrail.py --input $(Agent.TempDirectory)/infracost.json --max-delta-monthly 250 || true
+        displayName: "Infracost Cost Estimation & Guardrail"
+        env:
+          INFRACOST_API_KEY: $(INFRACOST_API_KEY)

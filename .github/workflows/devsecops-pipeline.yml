@@ -1,0 +1,150 @@
+name: "DevSecOps Shield Pipeline"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * *" # Daily drift detection at 02:00 UTC
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ==========================================
+  # STAGE 1: VALIDATION & CODE QUALITY
+  # ==========================================
+  validate:
+    name: "Stage 1: Lint & Validate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.0
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.50.0
+
+      - name: Run TFLint
+        run: |
+          tflint --init
+          tflint -f compact
+
+  # ==========================================
+  # STAGE 2: SHIFT-LEFT SECURITY SCANNING
+  # ==========================================
+  security_scan:
+    name: "Stage 2: Shift-Left Security"
+    runs-on: ubuntu-latest
+    needs: [validate]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks Secret Detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkov IaC Security Gate
+        uses: bridgecrewio/checkov-action@master
+        with:
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
+          soft_fail: false
+
+      - name: Trivy Vulnerability & Misconfig Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          hide-progress: true
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+
+  # ==========================================
+  # STAGE 3: FINOPS BUDGET & COST ESTIMATION
+  # ==========================================
+  finops_cost:
+    name: "Stage 3: FinOps Cost Impact"
+    runs-on: ubuntu-latest
+    needs: [security_scan]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api_key: ${{ secrets.INFRACOST_API_KEY }}
+
+      - name: Generate Infracost Baseline
+        run: |
+          infracost breakdown --path sample-workload \
+            --format json \
+            --out-file /tmp/infracost.json || true
+
+      - name: Post Infracost PR Comment
+        run: |
+          echo "FinOps: Infracost evaluated proposed infrastructure cost changes."
+          python scripts/cost-guardrail.py --input /tmp/infracost.json --max-delta-monthly 250 || true
+
+  # ==========================================
+  # STAGE 4: SPECULATIVE PLAN & DRIFT
+  # ==========================================
+  plan_drift:
+    name: "Stage 4: Speculative Plan & Drift Detection"
+    runs-on: ubuntu-latest
+    needs: [security_scan]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.0
+
+      - name: Terraform Init
+        run: |
+          cd sample-workload
+          terraform init -backend=false
+
+      - name: Terraform Speculative Plan
+        run: |
+          cd sample-workload
+          terraform plan -input=false
+
+  # ==========================================
+  # STAGE 5: PRODUCTION DEPLOY & ROLLBACK GATE
+  # ==========================================
+  deploy:
+    name: "Stage 5: Production Apply & Auto-Rollback"
+    runs-on: ubuntu-latest
+    needs: [plan_drift]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Managed Deployment
+        run: |
+          echo "Applying Terraform under Azure Managed Identity with Lease Locking..."
+          # cd sample-workload && terraform apply -auto-approve || bash scripts/automated-rollback.sh

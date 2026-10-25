@@ -1,0 +1,38 @@
+parameters:
+  - name: environment
+    type: string
+    default: 'production'
+
+jobs:
+  - deployment: DeployJob
+    displayName: "Apply Terraform Deployment with Automated Rollback"
+    pool:
+      vmImage: 'ubuntu-latest'
+    environment: ${{ parameters.environment }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+            - task: AzureCLI@2
+              displayName: "Terraform Apply with Blob Lease Locking"
+              inputs:
+                azureSubscription: $(azureServiceConnection)
+                scriptType: 'bash'
+                scriptLocation: 'inlineScript'
+                inlineScript: |
+                  set -e
+                  echo "Initializing backend with Service Principal..."
+                  cd sample-workload
+                  terraform init \
+                    -backend-config="resource_group_name=$(backendResourceGroup)" \
+                    -backend-config="storage_account_name=$(backendStorageAccount)" \
+                    -backend-config="container_name=$(backendContainer)" \
+                    -backend-config="key=$(backendKey)"
+                  
+                  echo "Applying changes with auto-approve..."
+                  terraform apply -input=false -auto-approve || {
+                    echo "Apply failed! Triggering automated rollback..."
+                    bash ../scripts/automated-rollback.sh
+                    exit 1
+                  }

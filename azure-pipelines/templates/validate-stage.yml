@@ -1,0 +1,21 @@
+jobs:
+  - job: ValidateJob
+    displayName: "Terraform Lint, Format & Syntax Validation"
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - task: TerraformInstaller@0
+        displayName: "Install Terraform $(terraformVersion)"
+        inputs:
+          terraformVersion: $(terraformVersion)
+
+      - script: |
+          echo "Checking Terraform formatting..."
+          terraform fmt -check -recursive
+        displayName: "Terraform Format Check"
+
+      - script: |
+          cd sample-workload
+          terraform init -backend=false
+          terraform validate
+        displayName: "Terraform Validate Syntax"

@@ -1,0 +1,18 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.venv
+venv/
+
+# Infracost temp
+infracost.json
+/tmp/infracost.json
+
+# Logs
+*.log

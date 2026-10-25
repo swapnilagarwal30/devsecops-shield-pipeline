@@ -1,0 +1,8 @@
+# Global Code Owners for Production Releases
+*       @swapnilagarwal30
+
+# Terraform Core & Production Policies require Lead Architect sign-off
+sample-workload/       @swapnilagarwal30
+azure-pipelines/       @swapnilagarwal30
+.github/workflows/     @swapnilagarwal30
+scripts/               @swapnilagarwal30
