@@ -23,12 +23,19 @@ resource "azurerm_storage_account" "secure_blob" {
   resource_group_name      = azurerm_resource_group.example.name
   location                 = azurerm_resource_group.example.location
   account_tier             = "Standard"
-  account_replication_type = "ZRS" # Zone-Redundant for High Availability
+  account_replication_type = "GRS" # Geo-Redundant for High Availability & Disaster Recovery
 
   # Shift-Left Security Controls
   min_tls_version                 = "TLS1_2"
-  enable_https_traffic_only       = true
   allow_nested_items_to_be_public = false
+  public_network_access_enabled   = false
+  shared_access_key_enabled       = false
+
+  blob_properties {
+    delete_retention_policy {
+      days = 7
+    }
+  }
 
   network_rules {
     default_action = "Deny"
