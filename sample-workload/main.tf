@@ -28,7 +28,7 @@ resource "azurerm_storage_account" "secure_blob" {
   # Shift-Left Security Controls
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
-  public_network_access_enabled   = false
+  public_network_access           = "Disabled"
   shared_access_key_enabled       = false
 
   blob_properties {
